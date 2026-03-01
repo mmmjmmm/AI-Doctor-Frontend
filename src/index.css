@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-bg-page text-text-primary antialiased;
+    /* 禁止iOS回弹效果，模拟原生应用体验 */
+    overscroll-behavior-y: none;
+  }
+}
+
+.iconfont {
+  /* ...原有样式... */
+  /* 方案1：描边加粗（0.5px 比较合适） */
+  -webkit-text-stroke: 0.5px currentColor;
+
+  /* 或者方案2：字体加粗（如果图标库支持） */
+  /* font-weight: bold; */
+}
