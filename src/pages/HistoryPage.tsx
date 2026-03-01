@@ -1,5 +1,5 @@
-import TopNavBar from '../components/TopNavBar';
-import Icon from '../components/Icon';
+import TopNavBar from '@/components/TopNavBar';
+import Icon from '@/components/Icon';
 
 export default function HistoryPage() {
   return (

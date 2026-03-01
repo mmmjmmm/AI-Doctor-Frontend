@@ -1,5 +1,5 @@
 export type MessageRole = "user" | "assistant" | "system";
-export type MessageType = "text" | "image" | "card" | "download_card";
+export type MessageType = "text" | "image" | "card";
 export type MessageStatus = "sending" | "sent" | "failed" | "deleted";
 export type FeedbackStatus = "none" | "liked" | "disliked";
 
@@ -25,7 +25,7 @@ export interface DownloadCard {
   title: string;
   sub_title?: string;
   icon_url: string;
-  image_url: string;
+  image_url?: string;
   cta: { text: string; action: "download" };
 }
 

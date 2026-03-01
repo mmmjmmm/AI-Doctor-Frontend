@@ -104,12 +104,14 @@ export default function HistoryDrawer({
       confirmText: <span className="text-red-500">确认删除</span>,
       cancelText: "取消",
       onConfirm: () => {
-        setSessions((prev) => prev.filter((s) => !selectedIds.includes(s.id)));
+        setSessions((prev) => {
+          const next = prev.filter((s) => !selectedIds.includes(s.id));
+          if (next.length === 0) {
+            setIsEditMode(false);
+          }
+          return next;
+        });
         setSelectedIds([]);
-        // 如果删完了，退出编辑模式
-        if (sessions.length === selectedIds.length) {
-          setIsEditMode(false);
-        }
         Toast.show("删除成功");
       },
     });

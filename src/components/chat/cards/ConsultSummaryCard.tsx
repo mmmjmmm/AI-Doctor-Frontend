@@ -91,7 +91,7 @@ export default function ConsultSummaryCard({
                       onClick={() => toggleAdvice(idx)}
                     >
                       <span className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                        <div className="w-1 h-3 bg-primary rounded-full" />
+                        <span className="w-1 h-3 bg-primary rounded-full" />
                         {advice.title}
                       </span>
                       <Icon

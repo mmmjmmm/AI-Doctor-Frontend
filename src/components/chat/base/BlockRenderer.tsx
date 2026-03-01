@@ -20,10 +20,14 @@ export default function BlockRenderer({
   return (
     <div className="space-y-3">
       {blocks.map((block, index) => {
+        const blockKey =
+          block.type === "list"
+            ? `${block.type}-${block.items.join("|")}-${index}`
+            : `${block.type}-${block.text}-${index}`;
         if (block.type === "heading") {
           return (
             <h3
-              key={index}
+              key={blockKey}
               className="text-[16px] font-bold text-gray-900 mt-4 mb-2 first:mt-0"
             >
               {block.text}
@@ -33,7 +37,7 @@ export default function BlockRenderer({
         if (block.type === "paragraph") {
           return (
             <p
-              key={index}
+              key={blockKey}
               className="text-[15px] leading-7 text-gray-900 whitespace-pre-wrap text-justify"
             >
               {block.text}
@@ -42,7 +46,7 @@ export default function BlockRenderer({
         }
         if (block.type === "list") {
           return (
-            <ul key={index} className="space-y-2 pl-1">
+            <ul key={blockKey} className="space-y-2 pl-1">
               {block.items.map((item, idx) => (
                 <li
                   key={idx}
