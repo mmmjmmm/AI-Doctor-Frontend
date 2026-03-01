@@ -2,6 +2,7 @@ import { type Message } from "@/types/chat";
 import BlockRenderer from "../base/BlockRenderer";
 import AssistantAvatar from "../base/AssistantAvatar";
 import CardFooter from "../base/CardFooter";
+import MarkdownRenderer from "../base/MarkdownRenderer";
 
 interface AssistantMessageCardProps {
   message: Message;
@@ -22,9 +23,7 @@ export default function AssistantMessageCard({
             {isRichContent ? (
               <BlockRenderer blocks={message.content_rich?.blocks} />
             ) : (
-              <p className="text-[15px] text-gray-900 whitespace-pre-wrap">
-                {message.content}
-              </p>
+              <MarkdownRenderer content={message.content} />
             )}
 
             <CardFooter

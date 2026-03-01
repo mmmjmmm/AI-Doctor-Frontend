@@ -81,6 +81,19 @@ const msg_user_2: Message = {
   status: "sent",
 };
 
+const msg_ai_markdown_demo: Message = {
+  message_id: "msg_ai_markdown_demo",
+  session_id: SESSION_ID,
+  role: "assistant",
+  type: "text",
+  content:
+    "### 可能原因\n- 作息不规律\n- 压力较大\n\n### 建议\n1. 固定作息\n2. 睡前放松\n\n可以先从这些开始调整，如有不适请及时就医。\n\n[了解更多](https://www.xiaohe.cn/)\n",
+  created_at: new Date(Date.now() - 1000 * 60 * 6.5).toISOString(),
+  status: "sent",
+  disclaimer_bottom: "回答不构成诊断依据，如有不适请尽快就医",
+  feedback_status: "none",
+};
+
 // 5. AI 诊断报告（长文本 + Markdown）
 const msg_ai_report: Message = {
   message_id: "msg_ai_report",
@@ -186,6 +199,7 @@ export const MOCK_MESSAGES: Message[] = [
   msg_user_1,
   msg_ai_intake_1,
   msg_user_2,
+  msg_ai_markdown_demo,
   msg_ai_report,
   msg_download,
   msg_summary,
