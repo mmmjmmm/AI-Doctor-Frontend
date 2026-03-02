@@ -279,19 +279,55 @@ export default function ChatPage() {
 
           const final = payload.final;
           if (final?.message_id === assistantMessageId) {
-            updateMessage(currentSessionId, assistantMessageId, (msg) => {
-              msg.session_id = currentSessionId;
-              msg.role = "assistant";
-              msg.type = "text";
-              msg.content = final.content || "";
-              msg.content_rich = final.content_rich ?? null;
-              msg.attachments = final.attachments ?? undefined;
-              msg.card = final.card ?? undefined;
-              msg.status = final.status ?? "sent";
-              msg.feedback_status = (final.feedback_status ??
-                "none") as Message["feedback_status"];
-              msg.created_at = final.created_at || msg.created_at;
-            });
+            const hasContent =
+              final.content ||
+              final.content_rich ||
+              (final.attachments && final.attachments.length > 0) ||
+              final.card;
+
+            if (!hasContent) {
+              if (hasAddedAssistantMsg) {
+                // 如果已经有消息了（比如流式出了一些），但 final 却是空的（理论上不应发生），这里还是更新一下状态
+                updateMessage(currentSessionId, assistantMessageId, (msg) => {
+                  msg.status = final.status ?? "sent";
+                  msg.feedback_status = (final.feedback_status ??
+                    "none") as Message["feedback_status"];
+                });
+              } else {
+                // 如果没有任何内容，则不入库，并提示
+                Toast.show("未生成有效内容");
+              }
+            } else if (!hasAddedAssistantMsg) {
+              addMessage(currentSessionId, {
+                message_id: assistantMessageId,
+                session_id: currentSessionId,
+                role: "assistant",
+                type: "text",
+                content: final.content || "",
+                content_rich: final.content_rich ?? null,
+                attachments: final.attachments ?? undefined,
+                card: final.card ?? undefined,
+                status: final.status ?? "sent",
+                feedback_status: (final.feedback_status ??
+                  "none") as Message["feedback_status"],
+                created_at: final.created_at || new Date().toISOString(),
+              });
+              hasAddedAssistantMsg = true;
+            } else {
+              updateMessage(currentSessionId, assistantMessageId, (msg) => {
+                msg.session_id = currentSessionId;
+                msg.role = "assistant";
+                msg.type = "text";
+                msg.content = final.content || "";
+                msg.content_rich = final.content_rich ?? null;
+                msg.attachments = final.attachments ?? undefined;
+                msg.card = final.card ?? undefined;
+                msg.status = final.status ?? "sent";
+                msg.feedback_status = (final.feedback_status ??
+                  "none") as Message["feedback_status"];
+                msg.created_at = final.created_at || msg.created_at;
+              });
+            }
           }
 
           const cardMessages: Message[] = (payload.cards || []).map((c) => ({

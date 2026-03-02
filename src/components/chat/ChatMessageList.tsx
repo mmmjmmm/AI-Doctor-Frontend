@@ -108,25 +108,37 @@ export default function ChatMessageList({
             const group: Message[] = [];
             let j = i;
             while (j < messages.length && messages[j].role === "assistant") {
-              group.push(messages[j]);
+              const m = messages[j];
+              // 过滤掉空内容的消息：如果是 text 类型且 content 为空且无 card 等其他内容
+              const hasContent =
+                m.content ||
+                m.content_rich ||
+                (m.attachments && m.attachments.length > 0) ||
+                (m.type === "card" && m.card);
+
+              if (hasContent) {
+                group.push(m);
+              }
               j += 1;
             }
 
-            const groupKey = `assistant_group_${group[0]?.message_id ?? i}`;
-            nodes.push(
-              <div key={groupKey} className="flex flex-col">
-                <AssistantAvatar />
-                <div className="flex flex-col gap-6">
-                  {group.map((m) =>
-                    renderAssistantItem(
-                      m,
-                      `${groupKey}_${m.message_id}`,
-                      false,
-                    ),
-                  )}
-                </div>
-              </div>,
-            );
+            if (group.length > 0) {
+              const groupKey = `assistant_group_${group[0]?.message_id ?? i}`;
+              nodes.push(
+                <div key={groupKey} className="flex flex-col">
+                  <AssistantAvatar />
+                  <div className="flex flex-col gap-6">
+                    {group.map((m) =>
+                      renderAssistantItem(
+                        m,
+                        `${groupKey}_${m.message_id}`,
+                        false,
+                      ),
+                    )}
+                  </div>
+                </div>,
+              );
+            }
 
             i = j;
             continue;
