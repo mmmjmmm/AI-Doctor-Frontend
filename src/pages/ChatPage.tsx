@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Toast } from "antd-mobile";
 import TopNavBar from "@/components/TopNavBar";
@@ -39,13 +39,17 @@ export default function ChatPage() {
     setMessages,
     addMessage,
     updateMessage,
-    isGenerating,
-    setGenerating,
+    generatingBySession,
+    setSessionGenerating,
   } = useChatStore();
 
   const messages = activeSessionId
     ? messagesBySession[activeSessionId] || []
     : [];
+  const isGenerating = useMemo(
+    () => (activeSessionId ? !!generatingBySession[activeSessionId] : false),
+    [activeSessionId, generatingBySession],
+  );
 
   // 1. 获取 App 配置
   const { data: appConfig } = useQuery({
@@ -129,17 +133,26 @@ export default function ChatPage() {
     },
   });
 
+  const initSessionRequestedRef = useRef(false);
+
   // 4. 初始化：如果无 URL sessionId 且无 activeSessionId，自动创建
   useEffect(() => {
-    if (!sessionId && !activeSessionId && !isCreatingSession) {
-      initSession();
+    if (sessionId || activeSessionId) {
+      initSessionRequestedRef.current = false;
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]); // 依赖项里去掉 activeSessionId，避免死循环，只在挂载或 sessionId 变化时检查
+
+    if (isCreatingSession || initSessionRequestedRef.current) {
+      return;
+    }
+
+    initSessionRequestedRef.current = true;
+    initSession();
+  }, [sessionId, activeSessionId, isCreatingSession, initSession]);
 
   useEffect(() => {
+    const streams = streamMapRef.current;
     return () => {
-      const streams = streamMapRef.current;
       Object.keys(streams).forEach((key) => {
         streams[key]?.close();
         delete streams[key];
@@ -153,7 +166,11 @@ export default function ChatPage() {
       streams[key]?.close();
       delete streams[key];
     });
-  }, [activeSessionId]);
+
+    if (activeSessionId) {
+      setSessionGenerating(activeSessionId, false);
+    }
+  }, [activeSessionId, setSessionGenerating]);
 
   const { mutateAsync: sendMessageAsync } = useMutation({
     mutationFn: sendMessage,
@@ -179,7 +196,7 @@ export default function ChatPage() {
       status: "sending",
     });
 
-    setGenerating(true);
+    setSessionGenerating(currentSessionId, true);
 
     try {
       const resp = await sendMessageAsync({
@@ -210,7 +227,7 @@ export default function ChatPage() {
           stream.close();
           delete streamMapRef.current[assistantMessageId];
         }
-        setGenerating(false);
+        setSessionGenerating(currentSessionId, false);
       };
 
       es.addEventListener("delta", (evt) => {
@@ -382,7 +399,7 @@ export default function ChatPage() {
       updateMessage(currentSessionId, clientMessageId, (msg) => {
         msg.status = "failed";
       });
-      setGenerating(false);
+      setSessionGenerating(currentSessionId, false);
     }
   };
 

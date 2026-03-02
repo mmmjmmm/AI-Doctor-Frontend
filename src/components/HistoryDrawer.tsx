@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import Icon from "./Icon";
 import clsx from "clsx";
 import { getHistoryList, batchDeleteHistory } from "@/api/history";
+import { useChatStore } from "@/store/useChatStore";
 
 interface HistoryDrawerProps {
   visible: boolean;
@@ -32,6 +33,7 @@ export default function HistoryDrawer({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { activeSessionId, setActiveSessionId, clearMessages } = useChatStore();
 
   // 1. 获取历史列表
   const { data, isLoading } = useQuery({
@@ -45,12 +47,20 @@ export default function HistoryDrawer({
   // 2. 删除 Mutation
   const deleteMutation = useMutation({
     mutationFn: (ids: string[]) => batchDeleteHistory(ids),
-    onSuccess: () => {
+    onSuccess: (_data, deletedIds) => {
       queryClient.invalidateQueries({ queryKey: ["historyList"] });
       Toast.show({
         content: "删除成功",
         icon: "success",
       });
+
+      if (activeSessionId && deletedIds.includes(activeSessionId)) {
+        clearMessages(activeSessionId);
+        setActiveSessionId(null);
+        navigate("/chat", { replace: true });
+        onClose();
+      }
+
       setIsEditMode(false);
       setSelectedIds([]);
     },
