@@ -39,6 +39,10 @@ export default function DownloadAppCard({
             </div>
           </div>
 
+          {card.content && (
+            <p className="text-sm text-gray-600 mb-4">{card.content}</p>
+          )}
+
           {card.image_url && (
             <div className="mb-4 rounded-lg overflow-hidden bg-gray-50 aspect-[2/1]">
               <img

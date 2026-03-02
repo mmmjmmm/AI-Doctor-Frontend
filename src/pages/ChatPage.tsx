@@ -39,6 +39,8 @@ export default function ChatPage() {
     setMessages,
     addMessage,
     updateMessage,
+    isGenerating,
+    setGenerating,
   } = useChatStore();
 
   const messages = activeSessionId
@@ -177,6 +179,8 @@ export default function ChatPage() {
       status: "sending",
     });
 
+    setGenerating(true);
+
     try {
       const resp = await sendMessageAsync({
         session_id: currentSessionId,
@@ -189,17 +193,7 @@ export default function ChatPage() {
       });
 
       const assistantMessageId = resp.assistant_message_id;
-
-      addMessage(currentSessionId, {
-        message_id: assistantMessageId,
-        session_id: currentSessionId,
-        role: "assistant",
-        type: "text",
-        content: "",
-        created_at: new Date().toISOString(),
-        status: "sending",
-        feedback_status: "none",
-      });
+      let hasAddedAssistantMsg = false;
 
       const existed = streamMapRef.current[assistantMessageId];
       if (existed) {
@@ -216,6 +210,7 @@ export default function ChatPage() {
           stream.close();
           delete streamMapRef.current[assistantMessageId];
         }
+        setGenerating(false);
       };
 
       es.addEventListener("delta", (evt) => {
@@ -228,9 +223,24 @@ export default function ChatPage() {
           };
           if (payload.message_id !== assistantMessageId) return;
           if (!payload.text) return;
-          updateMessage(currentSessionId, assistantMessageId, (msg) => {
-            msg.content = (msg.content || "") + payload.text;
-          });
+
+          if (!hasAddedAssistantMsg) {
+            addMessage(currentSessionId, {
+              message_id: assistantMessageId,
+              session_id: currentSessionId,
+              role: "assistant",
+              type: "text",
+              content: payload.text,
+              created_at: new Date().toISOString(),
+              status: "sending",
+              feedback_status: "none",
+            });
+            hasAddedAssistantMsg = true;
+          } else {
+            updateMessage(currentSessionId, assistantMessageId, (msg) => {
+              msg.content = (msg.content || "") + payload.text;
+            });
+          }
         } catch {
           return;
         }
@@ -325,15 +335,18 @@ export default function ChatPage() {
           Toast.show("流式连接失败");
         }
 
-        updateMessage(currentSessionId, assistantMessageId, (msg) => {
-          msg.status = "failed";
-        });
+        if (hasAddedAssistantMsg) {
+          updateMessage(currentSessionId, assistantMessageId, (msg) => {
+            msg.status = "failed";
+          });
+        }
         closeStream();
       });
     } catch {
       updateMessage(currentSessionId, clientMessageId, (msg) => {
         msg.status = "failed";
       });
+      setGenerating(false);
     }
   };
 
@@ -362,7 +375,11 @@ export default function ChatPage() {
           加载中...
         </div>
       ) : (
-        <ChatMessageList messages={messages} onSend={handleSend} />
+        <ChatMessageList
+          messages={messages}
+          onSend={handleSend}
+          isGenerating={isGenerating}
+        />
       )}
 
       {/* Bottom Fixed Area */}
@@ -381,6 +398,7 @@ export default function ChatPage() {
           limits={config?.limits}
           disabled={!activeSessionId || isCreatingSession}
           onSend={handleSend}
+          isGenerating={isGenerating}
         />
       </div>
 

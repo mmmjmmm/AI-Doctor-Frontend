@@ -11,15 +11,21 @@ interface ComposerProps {
   };
   disabled?: boolean;
   onSend?: (text: string) => void;
+  isGenerating?: boolean;
 }
 
-export default function Composer({ limits, disabled, onSend }: ComposerProps) {
+export default function Composer({ limits, disabled, onSend, isGenerating }: ComposerProps) {
   const [value, setValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSend = () => {
-    if (disabled || !value.trim()) return;
+    if (disabled) return;
+    if (isGenerating) {
+      Toast.show("模型生成中");
+      return;
+    }
+    if (!value.trim()) return;
     onSend?.(value);
     setValue("");
     setIsFocused(false);
@@ -100,12 +106,18 @@ export default function Composer({ limits, disabled, onSend }: ComposerProps) {
                   <Icon name="pic" size={24} />
                 </button>
                 <button
-                  className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white shadow-md active:scale-95 transition-transform"
+                  className={clsx(
+                    "w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white shadow-md active:scale-95 transition-transform",
+                    isGenerating && "opacity-80 cursor-not-allowed",
+                  )}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={handleSend}
                 >
-                  {/* 使用 ArrowUp 或 Send 图标 */}
-                  <Icon name="arrowup" size={16} className="text-white" />
+                  {isGenerating ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Icon name="arrowup" size={16} className="text-white" />
+                  )}
                 </button>
               </div>
             </div>

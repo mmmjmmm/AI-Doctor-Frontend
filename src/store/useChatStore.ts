@@ -5,6 +5,7 @@ import type { Message } from "@/types/chat";
 interface ChatState {
   activeSessionId: string | null;
   messagesBySession: Record<string, Message[]>;
+  isGenerating: boolean;
 }
 
 interface ChatActions {
@@ -17,6 +18,7 @@ interface ChatActions {
     updater: (msg: Message) => void,
   ) => void;
   clearMessages: (sessionId: string) => void;
+  setGenerating: (isGenerating: boolean) => void;
 }
 
 type ChatStore = ChatState & ChatActions;
@@ -25,6 +27,7 @@ export const useChatStore = create<ChatStore>()(
   immer((set) => ({
     activeSessionId: null,
     messagesBySession: {},
+    isGenerating: false,
 
     setActiveSessionId: (sessionId) => set({ activeSessionId: sessionId }),
 
@@ -55,6 +58,11 @@ export const useChatStore = create<ChatStore>()(
     clearMessages: (sessionId) =>
       set((state) => {
         delete state.messagesBySession[sessionId];
+      }),
+
+    setGenerating: (isGenerating) =>
+      set((state) => {
+        state.isGenerating = isGenerating;
       }),
   })),
 );

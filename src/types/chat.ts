@@ -22,8 +22,9 @@ export interface IntakeFormCard {
 // 下载引导卡片数据结构
 export interface DownloadCard {
   card_type: "download_app";
-  title: string;
+  title?: string;
   sub_title?: string;
+  content?: string;
   icon_url: string;
   image_url?: string;
   cta: { text: string; action: "download" };

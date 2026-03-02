@@ -10,11 +10,13 @@ import AssistantAvatar from "./base/AssistantAvatar";
 interface ChatMessageListProps {
   messages: Message[];
   onSend?: (text: string) => void;
+  isGenerating?: boolean;
 }
 
 export default function ChatMessageList({
   messages,
   onSend,
+  isGenerating,
 }: ChatMessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastMsg = messages[messages.length - 1];
@@ -23,7 +25,7 @@ export default function ChatMessageList({
   // 简单的自动滚动：当消息列表更新时滚动到底部
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length, scrollKey]);
+  }, [messages.length, scrollKey, isGenerating]);
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-6">
@@ -135,6 +137,17 @@ export default function ChatMessageList({
 
         return nodes;
       })()}
+
+      {/* Loading Bubble */}
+      {isGenerating && (!lastMsg || lastMsg.role === "user") && (
+        <div className="flex flex-col animate-fade-in">
+          <AssistantAvatar />
+          <div className="bg-white rounded-[16px] px-4 py-3 text-[#4A4F57] text-[15px] leading-relaxed shadow-sm w-fit mt-2 flex items-center gap-1">
+            <span>正在生成回复...</span>
+          </div>
+        </div>
+      )}
+
       <div ref={bottomRef} className="h-1" />
     </div>
   );
