@@ -1,47 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Popup, Dialog, Toast } from "antd-mobile";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import Icon from "./Icon";
 import clsx from "clsx";
-
-interface HistorySession {
-  id: string;
-  title: string;
-  summary: string;
-  date: string;
-}
-
-const MOCK_SESSIONS: HistorySession[] = [
-  {
-    id: "1",
-    title: "失眠是什么原因",
-    summary: "收到你说“经常失眠，每周好几天”这个信息了...",
-    date: "2023-10-25",
-  },
-  {
-    id: "2",
-    title: "失眠是什么原因造成的",
-    summary: "好的，看来您对目前的情况和改善方案已经很清...",
-    date: "2023-10-24",
-  },
-  {
-    id: "3",
-    title: "美甲后指甲护理建议",
-    summary: "**小荷 AI 医生划重点：** 从图片来看，您的指甲...",
-    date: "2023-10-23",
-  },
-  { id: "4", title: "[图片]", summary: "", date: "2023-10-22" },
-  {
-    id: "5",
-    title: "头痛原因及相关医生推荐 [图片*1]",
-    summary: "",
-    date: "2023-10-21",
-  },
-];
+import { getHistoryList, batchDeleteHistory } from "@/api/history";
 
 interface HistoryDrawerProps {
   visible: boolean;
   onClose: () => void;
-  onSelectSession?: (id: string) => void;
 }
 
 const CustomCheckbox = ({ checked }: { checked: boolean }) => (
@@ -60,20 +27,40 @@ const CustomCheckbox = ({ checked }: { checked: boolean }) => (
 export default function HistoryDrawer({
   visible,
   onClose,
-  onSelectSession,
 }: HistoryDrawerProps) {
-  const [sessions, setSessions] = useState<HistorySession[]>(MOCK_SESSIONS);
   const [isEditMode, setIsEditMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
-  // 每次打开抽屉重置状态
-  useEffect(() => {
-    if (visible) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+  // 1. 获取历史列表
+  const { data, isLoading } = useQuery({
+    queryKey: ["historyList"],
+    queryFn: () => getHistoryList({ days: 30 }),
+    enabled: visible, // 仅在可见时加载
+  });
+
+  const sessions = data?.sessions || [];
+
+  // 2. 删除 Mutation
+  const deleteMutation = useMutation({
+    mutationFn: (ids: string[]) => batchDeleteHistory(ids),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["historyList"] });
+      Toast.show({
+        content: "删除成功",
+        icon: "success",
+      });
       setIsEditMode(false);
       setSelectedIds([]);
-    }
-  }, [visible]);
+    },
+    onError: () => {
+      Toast.show({
+        content: "删除失败",
+        icon: "fail",
+      });
+    },
+  });
 
   // 切换选中状态
   const toggleSelection = (id: string) => {
@@ -81,15 +68,6 @@ export default function HistoryDrawer({
       prev.includes(id) ? prev.filter((pid) => pid !== id) : [...prev, id],
     );
   };
-
-  // 全选/取消全选
-  // const toggleSelectAll = () => {
-  //   if (selectedIds.length === sessions.length) {
-  //     setSelectedIds([]);
-  //   } else {
-  //     setSelectedIds(sessions.map((s) => s.id));
-  //   }
-  // };
 
   // 删除选中
   const handleDeleteSelected = () => {
@@ -104,23 +82,19 @@ export default function HistoryDrawer({
       confirmText: <span className="text-red-500">确认删除</span>,
       cancelText: "取消",
       onConfirm: () => {
-        setSessions((prev) => {
-          const next = prev.filter((s) => !selectedIds.includes(s.id));
-          if (next.length === 0) {
-            setIsEditMode(false);
-          }
-          return next;
-        });
-        setSelectedIds([]);
-        Toast.show("删除成功");
+        deleteMutation.mutate(selectedIds);
       },
     });
   };
 
   // 清空全部
   const handleClearAll = () => {
-    // 自动勾选所有条目
-    setSelectedIds(sessions.map((s) => s.id));
+    // 这里我们简单地先全选当前已加载的，或者调用专门的清空接口？
+    // API 提供了 batch_delete，我们可以先遍历所有已加载的 id。
+    // 如果要完全清空，可能需要后端支持 clear_all 参数，或者前端不断加载并删除。
+    // 这里先实现为“清空当前列表所有项”。
+    const allIds = sessions.map((s) => s.session_id);
+    if (allIds.length === 0) return;
 
     Dialog.confirm({
       title: "确认清空全部",
@@ -128,13 +102,7 @@ export default function HistoryDrawer({
       confirmText: <span className="text-red-500">确认清空</span>,
       cancelText: "取消",
       onConfirm: () => {
-        setSessions([]);
-        setSelectedIds([]);
-        setIsEditMode(false);
-        Toast.show("已清空");
-      },
-      onCancel: () => {
-        // 取消时保持勾选状态，不取消勾选
+        deleteMutation.mutate(allIds);
       },
     });
   };
@@ -192,47 +160,59 @@ export default function HistoryDrawer({
 
           {/* 列表 */}
           <div className="space-y-3">
-            {sessions.map((session) => (
-              <div
-                key={session.id}
-                onClick={() => {
-                  if (isEditMode) {
-                    toggleSelection(session.id);
-                  } else {
-                    onSelectSession?.(session.id);
-                    onClose();
-                  }
-                }}
-                className="bg-white rounded-[12px] p-4 shadow-sm active:bg-gray-50 transition-colors flex items-start gap-3 relative overflow-hidden"
-              >
-                {/* 编辑模式复选框 */}
-                {isEditMode && (
-                  <div className="shrink-0 pt-1">
-                    <CustomCheckbox
-                      checked={selectedIds.includes(session.id)}
-                    />
-                  </div>
-                )}
-
-                <div className="flex-1 min-w-0">
-                  <div className="text-[15px] font-semibold text-gray-900 mb-1 truncate">
-                    {session.title}
-                  </div>
-                  {session.summary && (
-                    <div className="text-[13px] text-gray-400 truncate leading-relaxed">
-                      {session.summary}
+            {isLoading && sessions.length === 0 ? (
+              <div className="text-center text-gray-400 py-4">加载中...</div>
+            ) : (
+              sessions.map((session) => (
+                <div
+                  key={session.session_id}
+                  onClick={() => {
+                    if (isEditMode) {
+                      toggleSelection(session.session_id);
+                    } else {
+                      navigate(`/chat/${session.session_id}`, {
+                        state: { historyNavNonce: Date.now() },
+                        replace: false,
+                      });
+                      onClose();
+                    }
+                  }}
+                  className="bg-white rounded-[12px] p-4 shadow-sm active:bg-gray-50 transition-colors flex items-start gap-3 relative overflow-hidden"
+                >
+                  {/* 编辑模式复选框 */}
+                  {isEditMode && (
+                    <div className="shrink-0 pt-1">
+                      <CustomCheckbox
+                        checked={selectedIds.includes(session.session_id)}
+                      />
                     </div>
                   )}
-                </div>
-              </div>
-            ))}
 
-            {sessions.length === 0 && (
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[15px] font-semibold text-gray-900 mb-1 truncate">
+                      {session.title || "新会话"}
+                    </div>
+                    {session.last_message && (
+                      <div className="text-[13px] text-gray-400 truncate leading-relaxed">
+                        {session.last_message}
+                      </div>
+                    )}
+                    <div className="text-[11px] text-gray-300 mt-1">
+                      {new Date(session.last_time).toLocaleDateString()}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+
+            {!isLoading && sessions.length === 0 && (
               <div className="flex flex-col items-center justify-center py-10 text-gray-400 gap-2">
                 <Icon name="cc-history" size={32} />
                 <span className="text-xs">暂无历史记录</span>
               </div>
             )}
+
+            {/* <InfiniteScroll loadMore={async () => { await fetchNextPage() }} hasMore={!!hasNextPage} /> */}
           </div>
         </div>
 

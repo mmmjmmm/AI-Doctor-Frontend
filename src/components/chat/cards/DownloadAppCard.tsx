@@ -3,9 +3,13 @@ import AssistantAvatar from "../base/AssistantAvatar";
 
 interface DownloadAppCardProps {
   message: Message;
+  withAvatar?: boolean;
 }
 
-export default function DownloadAppCard({ message }: DownloadAppCardProps) {
+export default function DownloadAppCard({
+  message,
+  withAvatar = true,
+}: DownloadAppCardProps) {
   const card = message.card as DownloadCard;
 
   const handleDownload = () => {
@@ -13,10 +17,10 @@ export default function DownloadAppCard({ message }: DownloadAppCardProps) {
   };
 
   return (
-    <div className="flex flex-col mb-6">
-      <AssistantAvatar />
+    <div className={withAvatar ? "flex flex-col mb-6" : "flex flex-col"}>
+      {withAvatar && <AssistantAvatar />}
       <div className="flex justify-start w-full">
-        <div className="bg-white p-4 rounded-card shadow-card w-[85%] max-w-[320px]">
+        <div className="bg-white p-4 rounded-card shadow-card w-[320px]">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-12 h-12 rounded-xl bg-gray-100 shrink-0 overflow-hidden">
               <img

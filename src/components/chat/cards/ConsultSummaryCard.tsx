@@ -6,10 +6,12 @@ import CardFooter from "../base/CardFooter";
 
 interface ConsultSummaryCardProps {
   message: Message;
+  withAvatar?: boolean;
 }
 
 export default function ConsultSummaryCard({
   message,
+  withAvatar = true,
 }: ConsultSummaryCardProps) {
   const card = message.card as ConsultSummaryCardData;
 
@@ -30,10 +32,10 @@ export default function ConsultSummaryCard({
   };
 
   return (
-    <div className="flex flex-col mb-6">
-      <AssistantAvatar />
+    <div className={withAvatar ? "flex flex-col mb-6" : "flex flex-col"}>
+      {withAvatar && <AssistantAvatar />}
       <div className="flex justify-start w-full">
-        <div className="bg-white rounded-[16px] shadow-sm w-[90%] overflow-hidden border border-gray-100">
+        <div className="bg-white rounded-[16px] shadow-sm w-[320px] overflow-hidden border border-gray-100">
           <div className="p-4 space-y-4">
             {/* 1. Gray Hint */}
             {card.hint && <p className="text-xs text-gray-400">{card.hint}</p>}

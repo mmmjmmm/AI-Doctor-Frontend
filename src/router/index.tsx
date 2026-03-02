@@ -1,7 +1,6 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import AppShell from '@/layouts/AppShell';
 import ChatPage from '@/pages/ChatPage';
-import HistoryPage from '@/pages/HistoryPage';
 
 export const router = createBrowserRouter([
   {
@@ -17,8 +16,8 @@ export const router = createBrowserRouter([
         element: <ChatPage />,
       },
       {
-        path: 'history',
-        element: <HistoryPage />,
+        path: 'chat/:sessionId',
+        element: <ChatPage />,
       },
     ],
   },

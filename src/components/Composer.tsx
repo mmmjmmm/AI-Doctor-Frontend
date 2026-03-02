@@ -2,10 +2,28 @@ import { useState, useRef, useEffect } from "react";
 import Icon from "./Icon";
 import clsx from "clsx";
 
-export default function Composer() {
+interface ComposerProps {
+  limits?: {
+    text_max_len: number;
+    send_rate_limit_ms: number;
+    image_max_mb: number;
+    upload_timeout_s: number;
+  };
+  disabled?: boolean;
+  onSend?: (text: string) => void;
+}
+
+export default function Composer({ limits, disabled, onSend }: ComposerProps) {
   const [value, setValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const handleSend = () => {
+    if (disabled || !value.trim()) return;
+    onSend?.(value);
+    setValue("");
+    setIsFocused(false);
+  };
 
   // 聚焦时自动调整高度
   useEffect(() => {
@@ -26,7 +44,10 @@ export default function Composer() {
   };
 
   return (
-    <div className="px-4 py-2 bg-bg-page pb-safe transition-all duration-300 ease-in-out">
+    <div className={clsx(
+      "px-4 py-2 bg-bg-page pb-safe transition-all duration-300 ease-in-out",
+      disabled && "opacity-50 pointer-events-none"
+    )}>
       <div
         className={clsx(
           "bg-white rounded-[20px] shadow-sm border border-gray-100 transition-all duration-300",
@@ -48,6 +69,7 @@ export default function Composer() {
               }}
               placeholder="发送消息"
               rows={1}
+              maxLength={limits?.text_max_len}
               className="w-full bg-transparent border-none outline-none text-[16px] placeholder-gray-400 caret-primary resize-none min-h-[24px] max-h-[120px]"
             />
             <div className="flex items-center justify-between pt-1">
@@ -80,11 +102,7 @@ export default function Composer() {
                 <button
                   className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white shadow-md active:scale-95 transition-transform"
                   onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => {
-                    console.log("Send:", value);
-                    setValue("");
-                    setIsFocused(false);
-                  }}
+                  onClick={handleSend}
                 >
                   {/* 使用 ArrowUp 或 Send 图标 */}
                   <Icon name="arrowup" size={16} className="text-white" />
