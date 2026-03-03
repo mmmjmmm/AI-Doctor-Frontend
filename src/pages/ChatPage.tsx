@@ -8,18 +8,22 @@ import Composer from "@/components/Composer";
 import HistoryDrawer from "@/components/HistoryDrawer";
 import ChatMessageList from "@/components/chat/ChatMessageList";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { getAppConfig } from "@/api/app";
+import { getAppConfig, type AppTool } from "@/api/app";
 import { createSession } from "@/api/session";
 import { getHistoryDetail } from "@/api/history";
-import { sendMessage } from "@/api/message";
+import { sendMessage, stopMessage } from "@/api/message";
+import { uploadImage } from "@/api/upload";
 import { useChatStore } from "@/store/useChatStore";
 import { useAppStore } from "@/store/useAppStore";
-import type { Message } from "@/types/chat";
+import { useTaskStore } from "@/store/useTaskStore";
+import type { Message, TaskType } from "@/types/chat";
 
 export default function ChatPage() {
   const [historyVisible, setHistoryVisible] = useState(false);
+  const [pendingImageTool, setPendingImageTool] = useState<AppTool | null>(null);
   const justCreatedSessionIdRef = useRef<string | null>(null);
   const streamMapRef = useRef<Record<string, EventSource>>({});
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
@@ -39,9 +43,14 @@ export default function ChatPage() {
     setMessages,
     addMessage,
     updateMessage,
+    removeMessage,
     generatingBySession,
     setSessionGenerating,
+    streamingMessageIdBySession,
+    setStreamingMessageId,
+    interruptAssistantMessage,
   } = useChatStore();
+  const { setRuntimeStatus } = useTaskStore();
 
   const messages = activeSessionId
     ? messagesBySession[activeSessionId] || []
@@ -50,6 +59,9 @@ export default function ChatPage() {
     () => (activeSessionId ? !!generatingBySession[activeSessionId] : false),
     [activeSessionId, generatingBySession],
   );
+  const streamingMessageId = activeSessionId
+    ? streamingMessageIdBySession[activeSessionId] || null
+    : null;
 
   // 1. 获取 App 配置
   const { data: appConfig } = useQuery({
@@ -169,14 +181,90 @@ export default function ChatPage() {
 
     if (activeSessionId) {
       setSessionGenerating(activeSessionId, false);
+      setStreamingMessageId(activeSessionId, null);
+      setRuntimeStatus(activeSessionId, "idle");
     }
-  }, [activeSessionId, setSessionGenerating]);
+  }, [activeSessionId, setRuntimeStatus, setSessionGenerating, setStreamingMessageId]);
 
   const { mutateAsync: sendMessageAsync } = useMutation({
     mutationFn: sendMessage,
   });
 
-  const handleSend = async (text: string) => {
+  const { mutateAsync: stopMessageAsync } = useMutation({
+    mutationFn: stopMessage,
+  });
+
+  const stopCurrentTask = async () => {
+    if (!activeSessionId || !streamingMessageId) return false;
+
+    try {
+      await stopMessageAsync({
+        session_id: activeSessionId,
+        assistant_message_id: streamingMessageId,
+      });
+    } catch {
+      // stop 接口失败时允许前端先本地中断，避免阻塞用户继续发起新任务。
+    }
+
+    const stream = streamMapRef.current[streamingMessageId];
+    if (stream) {
+      stream.close();
+      delete streamMapRef.current[streamingMessageId];
+    }
+
+    interruptAssistantMessage(activeSessionId, streamingMessageId);
+    setSessionGenerating(activeSessionId, false);
+    setStreamingMessageId(activeSessionId, null);
+    setRuntimeStatus(activeSessionId, "idle");
+    return true;
+  };
+
+  const normalizeToolKey = (key: AppTool["key"]) => {
+    if (key === "report") return "report_interpret";
+    if (key === "download") return "open_app";
+    if (key === "photo") return "body_part";
+    if (key === "doctor") return "doctor_reco";
+    if (key === "medicine") return "drug";
+    return key;
+  };
+
+  const getTaskTypeByToolKey = (key: ReturnType<typeof normalizeToolKey>) => {
+    if (key === "report_interpret") return "report_interpret";
+    if (key === "body_part") return "body_part";
+    if (key === "ingredient") return "ingredient";
+    if (key === "drug") return "drug";
+    return null;
+  };
+
+  const getDefaultTaskPrompt = (taskType: TaskType) => {
+    switch (taskType) {
+      case "report_interpret":
+        return "请帮我解读这份报告";
+      case "body_part":
+        return "请帮我看看这个患处";
+      case "ingredient":
+        return "请帮我分析这个成分";
+      case "drug":
+        return "请帮我看看这个药品";
+      default:
+        return "";
+    }
+  };
+
+  const handleSend = async (
+    text: string,
+    options?: {
+      taskType?: TaskType;
+      skipLocalUserMessage?: boolean;
+      attachment_ids?: string[];
+      replaceMessageIds?: string[];
+      task_context?: {
+        task_type: TaskType;
+        entry: "quick_tool" | "composer" | "history_retry";
+        images?: Array<{ file_id: string; url?: string }>;
+      };
+    },
+  ) => {
     if (!activeSessionId) return;
     const currentSessionId = activeSessionId;
 
@@ -186,16 +274,20 @@ export default function ChatPage() {
         ? crypto.randomUUID()
         : `c_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 
-    addMessage(currentSessionId, {
-      message_id: clientMessageId,
-      session_id: currentSessionId,
-      role: "user",
-      type: "text",
-      content: text,
-      created_at: now,
-      status: "sending",
-    });
+    if (!options?.skipLocalUserMessage) {
+      addMessage(currentSessionId, {
+        message_id: clientMessageId,
+        session_id: currentSessionId,
+        role: "user",
+        type: "text",
+        content: text,
+        created_at: now,
+        status: "sending",
+        task_type: options?.taskType ?? "chat",
+      });
+    }
 
+    setRuntimeStatus(currentSessionId, "sending_user_message");
     setSessionGenerating(currentSessionId, true);
 
     try {
@@ -203,11 +295,25 @@ export default function ChatPage() {
         session_id: currentSessionId,
         client_message_id: clientMessageId,
         content: text,
+        task_context: options?.task_context,
+        attachment_ids: options?.attachment_ids,
       });
 
-      updateMessage(currentSessionId, clientMessageId, (msg) => {
-        msg.status = "sent";
-      });
+      if (!options?.skipLocalUserMessage) {
+        updateMessage(currentSessionId, clientMessageId, (msg) => {
+          msg.status = "sent";
+        });
+      } else if (resp.user_message) {
+        (options?.replaceMessageIds || []).forEach((messageId) => {
+          removeMessage(currentSessionId, messageId);
+        });
+
+        addMessage(currentSessionId, {
+          ...resp.user_message,
+          feedback_status: resp.user_message.feedback_status ?? "none",
+          attachments: resp.user_message.attachments ?? [],
+        });
+      }
 
       const assistantMessageId = resp.assistant_message_id;
       let hasAddedAssistantMsg = false;
@@ -220,6 +326,8 @@ export default function ChatPage() {
 
       const es = new EventSource(resp.stream.stream_url);
       streamMapRef.current[assistantMessageId] = es;
+      setStreamingMessageId(currentSessionId, assistantMessageId);
+      setRuntimeStatus(currentSessionId, "ai_streaming");
 
       const closeStream = () => {
         const stream = streamMapRef.current[assistantMessageId];
@@ -228,7 +336,43 @@ export default function ChatPage() {
           delete streamMapRef.current[assistantMessageId];
         }
         setSessionGenerating(currentSessionId, false);
+        setStreamingMessageId(currentSessionId, null);
+        setRuntimeStatus(currentSessionId, "idle");
       };
+
+      es.addEventListener("status", (evt) => {
+        const e = evt as MessageEvent<string>;
+        if (!e.data) return;
+
+        try {
+          const payload = JSON.parse(e.data) as {
+            text?: string;
+            step?: string;
+          };
+
+          if (!payload.text) return;
+
+          if (payload.step === "multimodal_generating") {
+            setRuntimeStatus(currentSessionId, "vision_analyzing");
+          }
+
+          addMessage(currentSessionId, {
+            message_id:
+              typeof crypto !== "undefined" && "randomUUID" in crypto
+                ? crypto.randomUUID()
+                : `status_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+            session_id: currentSessionId,
+            role: "assistant",
+            type: "status",
+            content: payload.text,
+            created_at: new Date().toISOString(),
+            status: "sent",
+            client_only: true,
+          });
+        } catch {
+          return;
+        }
+      });
 
       es.addEventListener("delta", (evt) => {
         const e = evt as MessageEvent<string>;
@@ -251,11 +395,15 @@ export default function ChatPage() {
               created_at: new Date().toISOString(),
               status: "sending",
               feedback_status: "none",
+              thinking_status: "thinking",
             });
             hasAddedAssistantMsg = true;
           } else {
             updateMessage(currentSessionId, assistantMessageId, (msg) => {
               msg.content = (msg.content || "") + payload.text;
+              if (!msg.thinking_status || msg.thinking_status === "none") {
+                msg.thinking_status = "thinking";
+              }
             });
           }
         } catch {
@@ -283,6 +431,10 @@ export default function ChatPage() {
               attachments: Message["attachments"] | null;
               status: Message["status"];
               feedback_status: Message["feedback_status"] | null;
+              task_type?: Message["task_type"];
+              thinking_status?: Message["thinking_status"];
+              fold_meta?: Message["fold_meta"];
+              action_meta?: Message["action_meta"];
               created_at: string;
             };
             cards: Array<{
@@ -327,6 +479,10 @@ export default function ChatPage() {
                 status: final.status ?? "sent",
                 feedback_status: (final.feedback_status ??
                   "none") as Message["feedback_status"],
+                task_type: final.task_type ?? "chat",
+                thinking_status: final.thinking_status ?? "done",
+                fold_meta: final.fold_meta ?? undefined,
+                action_meta: final.action_meta ?? undefined,
                 created_at: final.created_at || new Date().toISOString(),
               });
               hasAddedAssistantMsg = true;
@@ -342,6 +498,10 @@ export default function ChatPage() {
                 msg.status = final.status ?? "sent";
                 msg.feedback_status = (final.feedback_status ??
                   "none") as Message["feedback_status"];
+                msg.task_type = final.task_type ?? msg.task_type ?? "chat";
+                msg.thinking_status = final.thinking_status ?? "done";
+                msg.fold_meta = final.fold_meta ?? msg.fold_meta;
+                msg.action_meta = final.action_meta ?? msg.action_meta;
                 msg.created_at = final.created_at || msg.created_at;
               });
             }
@@ -357,6 +517,7 @@ export default function ChatPage() {
             status: c.status ?? "sent",
             card: c.card,
             feedback_status: "none",
+            task_type: final?.task_type ?? "chat",
           }));
 
           cardMessages.forEach((m) => addMessage(currentSessionId, m));
@@ -393,13 +554,18 @@ export default function ChatPage() {
             msg.status = "failed";
           });
         }
+        setRuntimeStatus(currentSessionId, "error");
         closeStream();
       });
     } catch {
-      updateMessage(currentSessionId, clientMessageId, (msg) => {
-        msg.status = "failed";
-      });
+      if (!options?.skipLocalUserMessage) {
+        updateMessage(currentSessionId, clientMessageId, (msg) => {
+          msg.status = "failed";
+        });
+      }
       setSessionGenerating(currentSessionId, false);
+      setStreamingMessageId(currentSessionId, null);
+      setRuntimeStatus(currentSessionId, "error");
     }
   };
 
@@ -409,6 +575,175 @@ export default function ChatPage() {
 
   const handleNewSession = () => {
     initSession();
+  };
+
+  const openImagePicker = (tool: AppTool) => {
+    setPendingImageTool(tool);
+    imageInputRef.current?.click();
+  };
+
+  const handleImageInputChange = (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+
+    if (!activeSessionId || !pendingImageTool || files.length === 0) {
+      setPendingImageTool(null);
+      return;
+    }
+
+    const normalizedKey = normalizeToolKey(pendingImageTool.key);
+    const taskType = getTaskTypeByToolKey(normalizedKey);
+
+    if (!taskType) {
+      Toast.show("当前入口暂不支持图片分析");
+      setPendingImageTool(null);
+      return;
+    }
+
+    const run = async () => {
+      setRuntimeStatus(activeSessionId, "uploading_image");
+
+      const uploadedImages: Array<{ file_id: string }> = [];
+      const localImageMessageIds: string[] = [];
+
+      for (const file of files) {
+        const localMessageId =
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `img_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        localImageMessageIds.push(localMessageId);
+
+        const previewUrl = URL.createObjectURL(file);
+
+        addMessage(activeSessionId, {
+          message_id: localMessageId,
+          session_id: activeSessionId,
+          role: "user",
+          type: "image",
+          content: "",
+          attachments: [
+            {
+              attachment_id: localMessageId,
+              type: "image",
+              url: previewUrl,
+              meta: {
+                size: file.size,
+                upload_progress: 0,
+              },
+            },
+          ],
+          created_at: new Date().toISOString(),
+          status: "sending",
+          task_type: taskType,
+          client_only: true,
+        });
+
+        try {
+          const uploaded = await uploadImage({
+            file,
+            biz: taskType,
+          });
+
+          uploadedImages.push({
+            file_id: uploaded.file_id,
+          });
+
+          updateMessage(activeSessionId, localMessageId, (msg) => {
+            msg.status = "sent";
+            msg.attachments = [
+              {
+                attachment_id: uploaded.file_id,
+                type: "image",
+                url: uploaded.url,
+                meta: {
+                  width: uploaded.width,
+                  height: uploaded.height,
+                  size: uploaded.size,
+                  upload_progress: 100,
+                },
+              },
+            ];
+          });
+        } catch {
+          updateMessage(activeSessionId, localMessageId, (msg) => {
+            msg.status = "failed";
+            msg.error_message = "上传失败";
+          });
+        }
+      }
+
+      if (uploadedImages.length === 0) {
+        setRuntimeStatus(activeSessionId, "error");
+        setPendingImageTool(null);
+        return;
+      }
+
+      await handleSend(getDefaultTaskPrompt(taskType), {
+        taskType,
+        skipLocalUserMessage: true,
+        attachment_ids: uploadedImages.map((item) => item.file_id),
+        replaceMessageIds: localImageMessageIds,
+        task_context: {
+          task_type: taskType,
+          entry: "quick_tool",
+          images: uploadedImages,
+        },
+      });
+
+      setPendingImageTool(null);
+    };
+
+    void run();
+  };
+
+  const handleToolClick = async (tool: AppTool) => {
+    if (!activeSessionId) return;
+
+    const normalizedKey = normalizeToolKey(tool.key);
+
+    if (isGenerating) {
+      await stopCurrentTask();
+    }
+
+    switch (tool.trigger_mode) {
+      case "route":
+        setHistoryVisible(true);
+        return;
+      case "deeplink":
+        navigate("/open-app");
+        return;
+      case "send_message":
+        await handleSend(tool.preset_text || "帮我找医生");
+        return;
+      case "pick_image":
+        openImagePicker(tool);
+        return;
+      default:
+        if (normalizedKey === "history") {
+          setHistoryVisible(true);
+          return;
+        }
+        if (normalizedKey === "open_app") {
+          navigate("/open-app");
+          return;
+        }
+        if (normalizedKey === "doctor_reco") {
+          await handleSend(tool.preset_text || "帮我找医生");
+          return;
+        }
+        if (
+          normalizedKey === "report_interpret" ||
+          normalizedKey === "body_part" ||
+          normalizedKey === "ingredient" ||
+          normalizedKey === "drug"
+        ) {
+          openImagePicker(tool);
+          return;
+        }
+        Toast.show("功能建设中");
+    }
   };
 
   return (
@@ -421,6 +756,15 @@ export default function ChatPage() {
       {config?.disclaimer?.top_bar && (
         <DisclaimerTopBar text={config.disclaimer.top_bar} />
       )}
+
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        multiple
+        className="hidden"
+        onChange={handleImageInputChange}
+      />
 
       {/* Chat Scroll Area */}
       {isHistoryLoading ? (
@@ -439,13 +783,7 @@ export default function ChatPage() {
       <div className="shrink-0 bg-bg-page pb-safe z-10">
         <BottomToolsBar
           tools={config?.tools || []}
-          onToolClick={(key) => {
-            if (key === "history") {
-              setHistoryVisible(true);
-            } else {
-              Toast.show("功能建设中");
-            }
-          }}
+          onToolClick={handleToolClick}
         />
         <Composer
           limits={config?.limits}

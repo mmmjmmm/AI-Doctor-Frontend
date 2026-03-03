@@ -1,7 +1,19 @@
 export type MessageRole = "user" | "assistant" | "system";
-export type MessageType = "text" | "image" | "card";
-export type MessageStatus = "sending" | "sent" | "failed" | "deleted";
+export type MessageType = "text" | "image" | "card" | "status";
+export type MessageStatus =
+  | "sending"
+  | "sent"
+  | "failed"
+  | "deleted"
+  | "interrupted";
 export type FeedbackStatus = "none" | "liked" | "disliked";
+export type TaskType =
+  | "chat"
+  | "report_interpret"
+  | "body_part"
+  | "ingredient"
+  | "drug";
+export type MessageThinkingStatus = "none" | "thinking" | "done";
 
 // 富文本块定义
 export type ContentRichBlock =
@@ -54,7 +66,26 @@ export interface Attachment {
   attachment_id: string;
   type: "image";
   url: string;
-  meta?: { width: number; height: number; size: number };
+  meta?: {
+    width?: number;
+    height?: number;
+    size?: number;
+    upload_progress?: number;
+  };
+}
+
+export interface MessageFoldMeta {
+  enabled: boolean;
+  collapsed: boolean;
+  collapsed_lines?: number;
+}
+
+export interface MessageActionMeta {
+  can_copy?: boolean;
+  can_regenerate?: boolean;
+  can_like?: boolean;
+  can_dislike?: boolean;
+  can_share?: boolean;
 }
 
 // 消息主体
@@ -72,6 +103,12 @@ export interface Message {
   disclaimer_bottom?: string;
   // 卡片数据
   card?: IntakeFormCard | DownloadCard | ConsultSummaryCardData;
+  task_type?: TaskType;
+  thinking_status?: MessageThinkingStatus;
+  fold_meta?: MessageFoldMeta;
+  action_meta?: MessageActionMeta;
+  client_only?: boolean;
+  error_message?: string;
 }
 
 // 会话主体

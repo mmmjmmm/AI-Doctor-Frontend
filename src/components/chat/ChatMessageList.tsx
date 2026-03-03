@@ -48,6 +48,16 @@ export default function ChatMessageList({
             );
           }
 
+          if (msg.type === "status") {
+            return (
+              <div key={key} className="w-fit max-w-[85%]">
+                <div className="bg-[#F3F5F8] text-[#4A4F57] text-[13px] leading-5 px-3 py-2 rounded-[14px]">
+                  {msg.content}
+                </div>
+              </div>
+            );
+          }
+
           if (msg.type === "card" && msg.card) {
             switch (msg.card.card_type) {
               case "intake_form":
@@ -114,6 +124,7 @@ export default function ChatMessageList({
                 m.content ||
                 m.content_rich ||
                 (m.attachments && m.attachments.length > 0) ||
+                m.type === "status" ||
                 (m.type === "card" && m.card);
 
               if (hasContent) {
