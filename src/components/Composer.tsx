@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from "react";
-import { Toast } from "antd-mobile";
 import Icon from "./Icon";
 import clsx from "clsx";
 
@@ -12,25 +11,56 @@ interface ComposerProps {
   };
   disabled?: boolean;
   onSend?: (text: string) => void;
+  onStop?: () => void | Promise<unknown>;
   isGenerating?: boolean;
 }
 
-export default function Composer({ limits, disabled, onSend, isGenerating }: ComposerProps) {
+export default function Composer({
+  limits,
+  disabled,
+  onSend,
+  onStop,
+  isGenerating,
+}: ComposerProps) {
   const [value, setValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const trimmedValue = value.trim();
+  const canSend = !disabled && !isGenerating && !!trimmedValue;
 
   const handleSend = () => {
     if (disabled) return;
     if (isGenerating) {
-      Toast.show("模型生成中");
+      void onStop?.();
       return;
     }
-    if (!value.trim()) return;
-    onSend?.(value);
+    if (!trimmedValue) return;
+    onSend?.(trimmedValue);
     setValue("");
     setIsFocused(false);
   };
+
+  const renderPrimaryActionButton = () => (
+    <button
+      className={clsx(
+        "w-8 h-8 shrink-0 rounded-full bg-primary flex items-center justify-center text-white shadow-md transition-all",
+        canSend || isGenerating
+          ? "active:scale-95"
+          : "opacity-45 cursor-not-allowed",
+        disabled && "opacity-50 cursor-not-allowed",
+      )}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={handleSend}
+      aria-label={isGenerating ? "停止生成" : "发送消息"}
+      disabled={disabled || (!isGenerating && !trimmedValue)}
+    >
+      {isGenerating ? (
+        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+      ) : (
+        <Icon name="arrowup" size={16} className="text-white" />
+      )}
+    </button>
+  );
 
   // 聚焦时自动调整高度
   useEffect(() => {
@@ -106,20 +136,7 @@ export default function Composer({ limits, disabled, onSend, isGenerating }: Com
                 >
                   <Icon name="pic" size={24} />
                 </button>
-                <button
-                  className={clsx(
-                    "w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white shadow-md active:scale-95 transition-transform",
-                    isGenerating && "opacity-80 cursor-not-allowed",
-                  )}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={handleSend}
-                >
-                  {isGenerating ? (
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <Icon name="arrowup" size={16} className="text-white" />
-                  )}
-                </button>
+                {renderPrimaryActionButton()}
               </div>
             </div>
           </>
@@ -143,10 +160,11 @@ export default function Composer({ limits, disabled, onSend, isGenerating }: Com
               readOnly={false} // 允许聚焦
             />
 
-            {/* 收起态右侧图标：如果有内容显示发送，否则显示图片（可选，按您要求这里是“最初UI”，即图片） */}
             <button className="text-gray-900 shrink-0">
               <Icon name="pic" size={24} />
             </button>
+
+            {renderPrimaryActionButton()}
           </>
         )}
       </div>

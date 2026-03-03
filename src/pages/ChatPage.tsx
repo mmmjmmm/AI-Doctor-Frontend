@@ -789,6 +789,7 @@ export default function ChatPage() {
           limits={config?.limits}
           disabled={!activeSessionId || isCreatingSession}
           onSend={handleSend}
+          onStop={stopCurrentTask}
           isGenerating={isGenerating}
         />
       </div>
